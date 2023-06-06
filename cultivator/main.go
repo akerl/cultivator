@@ -2,16 +2,17 @@ package cultivator
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path"
 
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/ghodss/yaml"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitHttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v52/github"
@@ -34,6 +35,7 @@ type Executor struct {
 
 type target struct {
 	Data      *github.Repository
+	Path      string
 	Client    *github.Client
 	InstallID int64
 }
@@ -158,7 +160,12 @@ func (e *Executor) targets() ([]target, error) {
 				return t, err
 			}
 			for _, r := range repos.Repositories {
-				t = append(t, target{Data: r, Client: installClient, InstallID: *i.ID})
+				t = append(t, target{
+					Data:      r,
+					Path:      path.Join(e.Config.CacheDir, *r.FullName),
+					Client:    installClient,
+					InstallID: *i.ID,
+				})
 			}
 			if resp.NextPage == 0 {
 				break
@@ -171,17 +178,15 @@ func (e *Executor) targets() ([]target, error) {
 }
 
 func (e *Executor) sync(t target) error {
-	repoPath := path.Join(e.Config.CacheDir, *t.Data.FullName)
-
-	exists, err := repoExists(repoPath)
+	exists, err := repoExists(t.Path)
 	if err != nil {
 		return err
 	}
 
 	if exists {
-		return e.cleanRepo(t, repoPath)
+		return e.cleanRepo(t)
 	}
-	return e.cloneRepo(t, repoPath)
+	return e.cloneRepo(t)
 }
 
 func repoExists(filePath string) (bool, error) {
@@ -196,13 +201,17 @@ func repoExists(filePath string) (bool, error) {
 	return true, nil
 }
 
-func (e *Executor) cleanRepo(t target, repoPath string) error {
+func (e *Executor) cleanRepo(t target) error {
 	gitAuth, err := e.gitAuthTransport(t.InstallID)
 	if err != nil {
 		return err
 	}
 
-	r, err := git.PlainOpen(repoPath)
+	r, err := git.PlainOpen(t.Path)
+	if err != nil {
+		return err
+	}
+	w, err := r.Worktree()
 	if err != nil {
 		return err
 	}
@@ -217,24 +226,28 @@ func (e *Executor) cleanRepo(t target, repoPath string) error {
 		Force:    true,
 		Auth:     gitAuth,
 	})
-	if err == git.NoErrAlreadyUpToDate {
-		err = nil
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return err
 	}
-	return err
+
+	return w.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewRemoteReferenceName("origin", *t.Data.DefaultBranch),
+		Force:  true,
+	})
 }
 
-func (e *Executor) cloneRepo(t target, repoPath string) error {
+func (e *Executor) cloneRepo(t target) error {
 	gitAuth, err := e.gitAuthTransport(t.InstallID)
 	if err != nil {
 		return err
 	}
 
-	err = os.MkdirAll(repoPath, 0750)
+	err = os.MkdirAll(t.Path, 0750)
 	if err != nil {
 		return nil
 	}
 
-	_, err = git.PlainClone(repoPath, true, &git.CloneOptions{
+	_, err = git.PlainClone(t.Path, true, &git.CloneOptions{
 		URL:  *t.Data.CloneURL,
 		Auth: gitAuth,
 	})
@@ -245,6 +258,12 @@ func (e *Executor) cloneRepo(t target, repoPath string) error {
 }
 
 func (e *Executor) runCheckOnTarget(c string, t target, dir string) error {
-	fmt.Printf("%s %s %s\n", c, *t.Data.FullName, dir)
+	cmd := exec.Command(c, dir)
+	cmd.Dir = t.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
