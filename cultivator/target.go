@@ -1,6 +1,7 @@
 package cultivator
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,10 +9,6 @@ import (
 	"os/exec"
 	"path"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/google/go-github/v52/github"
 )
 
@@ -19,11 +16,12 @@ type target struct {
 	Data      *github.Repository
 	Path      string
 	Client    *github.Client
-	BasicAuth transport.AuthMethod
+	Slug      string
+	BasicAuth string
 }
 
 func repoExists(filePath string) (bool, error) {
-	gitPath := path.Join(filePath, "objects")
+	gitPath := path.Join(filePath, ".git")
 	_, err := os.Stat(gitPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -48,35 +46,18 @@ func (t *target) sync() error {
 }
 
 func (t *target) cleanRepo() error {
-	r, err := git.PlainOpen(t.Path)
-	if err != nil {
-		return err
-	}
-	w, err := r.Worktree()
+	_, _, err := t.runCommand("git", "remote", "set-url", "origin", t.cloneURL())
 	if err != nil {
 		return err
 	}
 
-	remote, err := r.Remote("origin")
+	_, _, err = t.runCommand("git", "clean", "-f")
 	if err != nil {
 		return err
 	}
 
-	logger.DebugMsg(fmt.Sprintf("fetching refs: %s", t.Path))
-	err = remote.Fetch(&git.FetchOptions{
-		RefSpecs: []config.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
-		Force:    true,
-		Auth:     t.BasicAuth,
-	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return err
-	}
-
-	logger.DebugMsg(fmt.Sprintf("checking out %s", *t.Data.DefaultBranch))
-	return w.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewRemoteReferenceName("origin", *t.Data.DefaultBranch),
-		Force:  true,
-	})
+	_, _, err = t.runCommand("git", "reset", "--hard", "origin/"+*t.Data.DefaultBranch)
+	return err
 }
 
 func (t *target) cloneRepo() error {
@@ -86,42 +67,46 @@ func (t *target) cloneRepo() error {
 	}
 
 	logger.DebugMsg(fmt.Sprintf("cloning %s", t.Path))
-	_, err = git.PlainClone(t.Path, false, &git.CloneOptions{
-		URL:  *t.Data.CloneURL,
-		Auth: t.BasicAuth,
-	})
+
+	_, _, err = t.runCommand("git", "clone", "--recursive", t.cloneURL(), ".")
 	return err
 }
 
+func (t *target) cloneURL() string {
+	return fmt.Sprintf("https://%s@github.com/%s", t.BasicAuth, *t.Data.FullName)
+}
+
+func (t *target) runCommand(cmd ...string) (string, string, error) {
+	logger.DebugMsg(fmt.Sprintf("executing %s on %s", cmd[0], t.Path))
+	e := exec.Command(cmd[0], cmd[1:]...)
+	var outb, errb bytes.Buffer
+	e.Stdout = &outb
+	e.Stderr = &errb
+	e.Dir = t.Path
+	err := e.Run()
+	if err != nil {
+		return "", "", err
+	}
+	return outb.String(), errb.String(), nil
+}
+
 func (t *target) runCheck(c string, dir string) error {
-	cmd := exec.Command(c, dir)
-	cmd.Dir = t.Path
-	out, err := cmd.Output()
+	out, _, err := t.runCommand(c, dir)
 	if err != nil {
 		return err
 	}
 
 	var change Change
-	err = json.Unmarshal(out, &change)
+	err = json.Unmarshal([]byte(out), &change)
 	if err != nil {
 		return err
 	}
 
-	r, err := git.PlainOpen(t.Path)
+	out, _, err = t.runCommand("git", "status", "--porcelain")
 	if err != nil {
 		return err
 	}
-	w, err := r.Worktree()
-	if err != nil {
-		return err
-	}
-
-	s, err := w.Status()
-	if err != nil {
-		return err
-	}
-
-	if s.IsClean() {
+	if len(out) == 0 {
 		logger.DebugMsg(fmt.Sprintf("no changes for %s on %s", c, t.Path))
 		return t.closePR(change)
 	}
@@ -130,16 +115,11 @@ func (t *target) runCheck(c string, dir string) error {
 }
 
 func (t *target) closePR(change Change) error {
-	user, _, err := t.Client.Users.Get(context.Background(), "")
-	if err != nil {
-		return err
-	}
-
 	prs, _, err := t.Client.PullRequests.List(
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", *user.Login, change.Branch)},
+		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", t.Slug, change.Branch)},
 	)
 
 	if len(prs) == 0 {
@@ -162,34 +142,17 @@ func (t *target) closePR(change Change) error {
 }
 
 func (t *target) openPR(change Change) error {
-	r, err := git.PlainOpen(t.Path)
-	if err != nil {
-		return err
-	}
-	w, err := r.Worktree()
+	_, _, err := t.runCommand("git", "add", ".")
 	if err != nil {
 		return err
 	}
 
-	err = w.AddGlob(".")
+	_, _, err = t.runCommand("git", "commit", "-m", change.CommitMsg)
 	if err != nil {
 		return err
 	}
 
-	hash, err := w.Commit(change.CommitMsg, nil)
-	if err != nil {
-		return err
-	}
-
-	logger.DebugMsg(fmt.Sprintf("pushing %s for %s", change.Branch, t.Path))
-	err = r.Push(&git.PushOptions{
-		RemoteName: "origin",
-		Auth:       t.BasicAuth,
-		RefSpecs: []config.RefSpec{
-			config.RefSpec(fmt.Sprintf("%s:%s", hash, change.Branch)),
-		},
-		Force: true,
-	})
+	_, _, err = t.runCommand("git", "push", "--force", *t.Data.DefaultBranch+":"+change.Branch)
 	if err != nil {
 		return err
 	}

@@ -8,8 +8,6 @@ import (
 	"path"
 
 	"github.com/bradleyfalzon/ghinstallation"
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	gitHttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v52/github"
 )
 
@@ -36,7 +34,10 @@ func (e *Executor) Execute() error {
 	logger.DebugMsg(fmt.Sprintf("found %d targets", len(targets)))
 	logger.DebugMsg(fmt.Sprintf("running %d checks", len(e.Config.Checks)))
 	for _, c := range e.Config.Checks {
-		e.runCheck(c, targets)
+		err := e.runCheck(c, targets)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -90,24 +91,30 @@ func (e *Executor) installClient(installID int64) (*github.Client, error) {
 	return github.NewClient(&http.Client{Transport: itr}), nil
 }
 
-func (e *Executor) basicAuth(installID int64) (transport.AuthMethod, error) {
+func (e *Executor) basicAuth(installID int64) (string, error) {
 	logger.DebugMsg(fmt.Sprintf("creating basic auth token for %d", installID))
 	appClient, err := e.appClient()
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	token, _, err := appClient.Apps.CreateInstallationToken(context.Background(), installID, nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return &gitHttp.BasicAuth{Username: "x-access-token", Password: *token.Token}, nil
+
+	return "x-access-token:" + *token.Token, nil
 }
 
 func (e *Executor) targets() ([]target, error) {
 	var t []target
 
 	appClient, err := e.appClient()
+	if err != nil {
+		return t, err
+	}
+
+	user, _, err := appClient.Apps.Get(context.Background(), "")
 	if err != nil {
 		return t, err
 	}
@@ -136,6 +143,7 @@ func (e *Executor) targets() ([]target, error) {
 					Data:      r,
 					Path:      path.Join(e.Config.CacheDir, *r.FullName),
 					Client:    installClient,
+					Slug:      *user.Slug,
 					BasicAuth: ba,
 				})
 			}
