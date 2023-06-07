@@ -2,60 +2,19 @@ package cultivator
 
 import (
 	"context"
-	"io/ioutil"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 
 	"github.com/bradleyfalzon/ghinstallation"
-	"github.com/ghodss/yaml"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitHttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/google/go-github/v52/github"
 )
 
-const defaultConfigFile = "config.yaml"
-
-// Config describes options for changing the behavior of Cultivator
-type Config struct {
-	CacheDir       string   `json:"cache_dir"`
-	IntegrationID  int      `json:"integration_id"`
-	PrivateKeyFile string   `json:"private_key_file"`
-	Checks         []string `json:"checks"`
-}
-
 // Executor defines a cultivator instance
 type Executor struct {
 	Config Config
-}
-
-type target struct {
-	Data      *github.Repository
-	Path      string
-	Client    *github.Client
-	InstallID int64
-}
-
-func loadConfig(fileArg string) (Config, error) {
-	var c Config
-	var err error
-
-	file := fileArg
-	if file == "" {
-		file = defaultConfigFile
-	}
-
-	contents, err := ioutil.ReadFile(file)
-	if err != nil {
-		return c, err
-	}
-
-	err = yaml.Unmarshal(contents, &c)
-	return c, err
 }
 
 // NewFromFile creates a new Executor from a config file
@@ -88,10 +47,10 @@ func (e *Executor) runCheck(c string, targets []target) error {
 	defer os.RemoveAll(dir)
 
 	for _, t := range targets {
-		if err := e.sync(t); err != nil {
+		if err := t.sync(); err != nil {
 			return err
 		}
-		if err := e.runCheckOnTarget(c, t, dir); err != nil {
+		if err := t.RunCheck(c, dir); err != nil {
 			return err
 		}
 	}
@@ -125,7 +84,7 @@ func (e *Executor) installClient(installID int64) (*github.Client, error) {
 	return github.NewClient(&http.Client{Transport: itr}), nil
 }
 
-func (e *Executor) gitAuthTransport(installID int64) (transport.AuthMethod, error) {
+func (e *Executor) basicAuth(installID int64) (transport.AuthMethod, error) {
 	appClient, err := e.appClient()
 	if err != nil {
 		return nil, err
@@ -153,6 +112,11 @@ func (e *Executor) targets() ([]target, error) {
 			return t, err
 		}
 
+		ba, err := e.basicAuth(*i.ID)
+		if err != nil {
+			return t, err
+		}
+
 		opt := &github.ListOptions{PerPage: 100}
 		for {
 			repos, resp, err := installClient.Apps.ListRepos(context.Background(), opt)
@@ -164,7 +128,7 @@ func (e *Executor) targets() ([]target, error) {
 					Data:      r,
 					Path:      path.Join(e.Config.CacheDir, *r.FullName),
 					Client:    installClient,
-					InstallID: *i.ID,
+					BasicAuth: ba,
 				})
 			}
 			if resp.NextPage == 0 {
@@ -175,95 +139,4 @@ func (e *Executor) targets() ([]target, error) {
 	}
 
 	return t, nil
-}
-
-func (e *Executor) sync(t target) error {
-	exists, err := repoExists(t.Path)
-	if err != nil {
-		return err
-	}
-
-	if exists {
-		return e.cleanRepo(t)
-	}
-	return e.cloneRepo(t)
-}
-
-func repoExists(filePath string) (bool, error) {
-	gitPath := path.Join(filePath, "objects")
-	_, err := os.Stat(gitPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
-}
-
-func (e *Executor) cleanRepo(t target) error {
-	gitAuth, err := e.gitAuthTransport(t.InstallID)
-	if err != nil {
-		return err
-	}
-
-	r, err := git.PlainOpen(t.Path)
-	if err != nil {
-		return err
-	}
-	w, err := r.Worktree()
-	if err != nil {
-		return err
-	}
-
-	remote, err := r.Remote("origin")
-	if err != nil {
-		return err
-	}
-
-	err = remote.Fetch(&git.FetchOptions{
-		RefSpecs: []config.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
-		Force:    true,
-		Auth:     gitAuth,
-	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return err
-	}
-
-	return w.Checkout(&git.CheckoutOptions{
-		Branch: plumbing.NewRemoteReferenceName("origin", *t.Data.DefaultBranch),
-		Force:  true,
-	})
-}
-
-func (e *Executor) cloneRepo(t target) error {
-	gitAuth, err := e.gitAuthTransport(t.InstallID)
-	if err != nil {
-		return err
-	}
-
-	err = os.MkdirAll(t.Path, 0750)
-	if err != nil {
-		return nil
-	}
-
-	_, err = git.PlainClone(t.Path, true, &git.CloneOptions{
-		URL:  *t.Data.CloneURL,
-		Auth: gitAuth,
-	})
-	if err == transport.ErrEmptyRemoteRepository {
-		err = nil
-	}
-	return err
-}
-
-func (e *Executor) runCheckOnTarget(c string, t target, dir string) error {
-	cmd := exec.Command(c, dir)
-	cmd.Dir = t.Path
-	out, err := cmd.Output()
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
