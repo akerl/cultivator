@@ -3,6 +3,7 @@ module github.com/akerl/cultivator
 go 1.20
 
 require (
+	github.com/akerl/timber v0.0.3
 	github.com/bradleyfalzon/ghinstallation v1.1.1
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-git/go-git/v5 v5.7.0

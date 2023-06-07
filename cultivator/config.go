@@ -1,10 +1,14 @@
 package cultivator
 
 import (
+	"fmt"
 	"io/ioutil"
 
+	"github.com/akerl/timber/log"
 	"github.com/ghodss/yaml"
 )
+
+var logger = log.NewLogger("cultivator")
 
 const defaultConfigFile = "config.yaml"
 
@@ -24,6 +28,7 @@ func loadConfig(fileArg string) (Config, error) {
 	if file == "" {
 		file = defaultConfigFile
 	}
+	logger.DebugMsg(fmt.Sprintf("loading config from %s", file))
 
 	contents, err := ioutil.ReadFile(file)
 	if err != nil {

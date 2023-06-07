@@ -2,6 +2,7 @@ package cultivator
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -32,7 +33,8 @@ func (e *Executor) Execute() error {
 	if err != nil {
 		return err
 	}
-
+	logger.DebugMsg(fmt.Sprintf("found %d targets", len(targets)))
+	logger.DebugMsg(fmt.Sprintf("running %d checks", len(e.Config.Checks)))
 	for _, c := range e.Config.Checks {
 		e.runCheck(c, targets)
 	}
@@ -44,13 +46,15 @@ func (e *Executor) runCheck(c string, targets []target) error {
 	if err != nil {
 		return err
 	}
+	logger.DebugMsg(fmt.Sprintf("created tmpdir for %s at %s", c, dir))
 	defer os.RemoveAll(dir)
 
 	for _, t := range targets {
+		logger.DebugMsg(fmt.Sprintf("running %s on %s", c, t.Path))
 		if err := t.sync(); err != nil {
 			return err
 		}
-		if err := t.RunCheck(c, dir); err != nil {
+		if err := t.runCheck(c, dir); err != nil {
 			return err
 		}
 	}
@@ -58,6 +62,7 @@ func (e *Executor) runCheck(c string, targets []target) error {
 }
 
 func (e *Executor) appClient() (*github.Client, error) {
+	logger.DebugMsg("creating app client")
 	itr, err := ghinstallation.NewAppsTransportKeyFromFile(
 		http.DefaultTransport,
 		int64(e.Config.IntegrationID),
@@ -71,6 +76,7 @@ func (e *Executor) appClient() (*github.Client, error) {
 }
 
 func (e *Executor) installClient(installID int64) (*github.Client, error) {
+	logger.DebugMsg(fmt.Sprintf("creating install client for %d", installID))
 	itr, err := ghinstallation.NewKeyFromFile(
 		http.DefaultTransport,
 		int64(e.Config.IntegrationID),
@@ -85,6 +91,7 @@ func (e *Executor) installClient(installID int64) (*github.Client, error) {
 }
 
 func (e *Executor) basicAuth(installID int64) (transport.AuthMethod, error) {
+	logger.DebugMsg(fmt.Sprintf("creating basic auth token for %d", installID))
 	appClient, err := e.appClient()
 	if err != nil {
 		return nil, err
@@ -106,6 +113,7 @@ func (e *Executor) targets() ([]target, error) {
 	}
 
 	installations, _, err := appClient.Apps.ListInstallations(context.Background(), nil)
+	logger.DebugMsg(fmt.Sprintf("found %d installations", len(installations)))
 	for _, i := range installations {
 		installClient, err := e.installClient(*i.ID)
 		if err != nil {

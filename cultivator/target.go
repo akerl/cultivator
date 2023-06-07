@@ -41,6 +41,7 @@ func (t *target) sync() error {
 	}
 
 	if exists {
+		logger.DebugMsg(fmt.Sprintf("repo already exists: %s", t.Path))
 		return t.cleanRepo()
 	}
 	return t.cloneRepo()
@@ -61,6 +62,7 @@ func (t *target) cleanRepo() error {
 		return err
 	}
 
+	logger.DebugMsg(fmt.Sprintf("fetching refs: %s", t.Path))
 	err = remote.Fetch(&git.FetchOptions{
 		RefSpecs: []config.RefSpec{"refs/*:refs/*", "HEAD:refs/heads/HEAD"},
 		Force:    true,
@@ -70,6 +72,7 @@ func (t *target) cleanRepo() error {
 		return err
 	}
 
+	logger.DebugMsg(fmt.Sprintf("checking out %s", *t.Data.DefaultBranch))
 	return w.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.NewRemoteReferenceName("origin", *t.Data.DefaultBranch),
 		Force:  true,
@@ -82,18 +85,15 @@ func (t *target) cloneRepo() error {
 		return nil
 	}
 
-	_, err = git.PlainClone(t.Path, true, &git.CloneOptions{
+	logger.DebugMsg(fmt.Sprintf("cloning %s", t.Path))
+	_, err = git.PlainClone(t.Path, false, &git.CloneOptions{
 		URL:  *t.Data.CloneURL,
 		Auth: t.BasicAuth,
 	})
-	if err == transport.ErrEmptyRemoteRepository {
-		err = nil
-	}
 	return err
 }
 
-// RunCheck executes a check against a single repo
-func (t *target) RunCheck(c string, dir string) error {
+func (t *target) runCheck(c string, dir string) error {
 	cmd := exec.Command(c, dir)
 	cmd.Dir = t.Path
 	out, err := cmd.Output()
@@ -122,8 +122,10 @@ func (t *target) RunCheck(c string, dir string) error {
 	}
 
 	if s.IsClean() {
+		logger.DebugMsg(fmt.Sprintf("no changes for %s on %s", c, t.Path))
 		return t.closePR(change)
 	}
+	logger.DebugMsg(fmt.Sprintf("found changes for %s on %s", c, t.Path))
 	return t.openPR(change)
 }
 
@@ -141,13 +143,14 @@ func (t *target) closePR(change Change) error {
 	)
 
 	if len(prs) == 0 {
+		logger.DebugMsg(fmt.Sprintf("no open PRs for %s on %s", change.Name, t.Path))
 		return nil
 	} else if len(prs) > 1 {
 		return fmt.Errorf("got more than 1 PR for same branch, refusing to proceed")
 	}
 
+	logger.DebugMsg(fmt.Sprintf("closing PR for %s on %s", change.Name, t.Path))
 	state := "closed"
-
 	_, _, err = t.Client.PullRequests.Edit(
 		context.Background(),
 		*t.Data.Owner.Login,
@@ -178,11 +181,12 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
+	logger.DebugMsg(fmt.Sprintf("pushing %s for %s", change.Branch, t.Path))
 	err = r.Push(&git.PushOptions{
 		RemoteName: "origin",
 		Auth:       t.BasicAuth,
 		RefSpecs: []config.RefSpec{
-			config.RefSpec(fmt.Sprintf("%s:%s", hash, *t.Data.DefaultBranch)),
+			config.RefSpec(fmt.Sprintf("%s:%s", hash, change.Branch)),
 		},
 		Force: true,
 	})
@@ -190,6 +194,7 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
+	logger.DebugMsg(fmt.Sprintf("creating PR for %s on %s", change.Branch, t.Path))
 	_, _, err = t.Client.PullRequests.Create(
 		context.Background(),
 		*t.Data.Owner.Login,
