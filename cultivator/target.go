@@ -152,7 +152,8 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
-	_, _, err = t.runCommand("git", "push", "--force", *t.Data.DefaultBranch+":"+change.Branch)
+	ref := *t.Data.DefaultBranch + ":" + change.Branch
+	_, _, err = t.runCommand("git", "push", "--force", "origin", ref)
 	if err != nil {
 		return err
 	}
