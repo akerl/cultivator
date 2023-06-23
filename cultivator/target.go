@@ -18,6 +18,7 @@ type target struct {
 	Client    *github.Client
 	Slug      string
 	BasicAuth string
+	Updated   bool
 }
 
 func repoExists(filePath string) (bool, error) {
@@ -58,7 +59,20 @@ func (t *target) cleanRepo() error {
 	}
 
 	_, _, err = t.runCommand("git", "reset", "--hard", "origin/"+*t.Data.DefaultBranch)
-	return err
+	if err != nil {
+		return err
+	}
+
+	if t.Updated {
+		return nil
+	}
+
+	_, _, err = t.runCommand("git", "pull", "origin", *t.Data.DefaultBranch)
+	if err != nil {
+		return err
+	}
+	t.Updated = true
+	return nil
 }
 
 func (t *target) cloneRepo() error {
