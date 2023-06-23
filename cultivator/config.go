@@ -14,10 +14,10 @@ const defaultConfigFile = "config.yaml"
 
 // Config describes options for changing the behavior of Cultivator
 type Config struct {
-	CacheDir       string   `json:"cache_dir"`
-	IntegrationID  int      `json:"integration_id"`
-	PrivateKeyFile string   `json:"private_key_file"`
-	Checks         []string `json:"checks"`
+	CacheDir       string `json:"cache_dir"`
+	IntegrationID  int    `json:"integration_id"`
+	PrivateKeyFile string `json:"private_key_file"`
+	CheckDir       string `json:"check_dir"`
 }
 
 func loadConfig(fileArg string) (Config, error) {

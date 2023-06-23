@@ -3,9 +3,11 @@ package cultivator
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/bradleyfalzon/ghinstallation"
 	"github.com/google/go-github/v52/github"
@@ -32,14 +34,36 @@ func (e *Executor) Execute() error {
 		return err
 	}
 	logger.DebugMsg(fmt.Sprintf("found %d targets", len(targets)))
-	logger.DebugMsg(fmt.Sprintf("running %d checks", len(e.Config.Checks)))
-	for _, c := range e.Config.Checks {
+	checks, err := e.checks()
+	if err != nil {
+		return err
+	}
+	logger.DebugMsg(fmt.Sprintf("running %d checks", len(checks)))
+	for _, c := range checks {
 		err := e.runCheck(c, targets)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (e *Executor) checks() ([]string, error) {
+	var res []string
+
+	err := filepath.Walk(e.Config.CheckDir, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && info.Mode()&0100 != 0 {
+			res = append(res, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return []string{}, err
+	}
+	return res, nil
 }
 
 func (e *Executor) runCheck(c string, targets []target) error {
