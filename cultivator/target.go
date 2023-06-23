@@ -92,7 +92,7 @@ func (t *target) cloneURL() string {
 }
 
 func (t *target) runCommand(cmd ...string) (string, string, error) {
-	logger.DebugMsg(fmt.Sprintf("executing %s on %s", cmd[0], t.Path))
+	logger.DebugMsg(fmt.Sprintf("executing %v on %s", cmd, t.Path))
 	e := exec.Command(cmd[0], cmd[1:]...)
 	var outb, errb bytes.Buffer
 	e.Stdout = &outb
