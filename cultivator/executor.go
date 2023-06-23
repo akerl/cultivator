@@ -24,6 +24,7 @@ func NewFromFile(fileArg string) (Executor, error) {
 	if err != nil {
 		return Executor{}, err
 	}
+	logger.DebugMsg(fmt.Sprintf("creating executor with config: %+v", c))
 	return Executor{Config: c}, err
 }
 
@@ -51,11 +52,14 @@ func (e *Executor) Execute() error {
 func (e *Executor) checks() ([]string, error) {
 	var res []string
 
+	logger.DebugMsg(fmt.Sprintf("loading checks from %s", e.Config.CheckDir))
 	err := filepath.Walk(e.Config.CheckDir, func(path string, info fs.FileInfo, err error) error {
 		if err != nil {
+			logger.DebugMsg(fmt.Sprintf("failed to walk %s", path))
 			return err
 		}
 		if !info.IsDir() && info.Mode()&0100 != 0 {
+			logger.DebugMsg(fmt.Sprintf("found check %s", path))
 			res = append(res, path)
 		}
 		return nil

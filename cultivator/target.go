@@ -46,6 +46,7 @@ func (t *target) sync() error {
 }
 
 func (t *target) cleanRepo() error {
+	logger.DebugMsg(fmt.Sprintf("cleaning repo %s", t.Path))
 	_, _, err := t.runCommand("git", "remote", "set-url", "origin", t.cloneURL())
 	if err != nil {
 		return err
@@ -61,12 +62,12 @@ func (t *target) cleanRepo() error {
 }
 
 func (t *target) cloneRepo() error {
+	logger.DebugMsg(fmt.Sprintf("cloning repo %s", t.Path))
+
 	err := os.MkdirAll(t.Path, 0750)
 	if err != nil {
 		return nil
 	}
-
-	logger.DebugMsg(fmt.Sprintf("cloning %s", t.Path))
 
 	_, _, err = t.runCommand("git", "clone", "--recursive", t.cloneURL(), ".")
 	return err
