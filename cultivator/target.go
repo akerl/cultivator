@@ -134,7 +134,7 @@ func (t *target) closePR(change Change) error {
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", t.Slug, change.Branch)},
+		&github.PullRequestListOptions{Head: change.Branch},
 	)
 
 	if len(prs) == 0 {
@@ -177,7 +177,7 @@ func (t *target) openPR(change Change) error {
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", t.Slug, change.Branch)},
+		&github.PullRequestListOptions{Head: change.Branch},
 	)
 	if err != nil {
 		return err
@@ -210,11 +210,6 @@ func (t *target) openPR(change Change) error {
 			Body:  &change.Body,
 		},
 	)
-
-	if err != nil {
-		fmt.Printf("%+v\n", prs)
-		fmt.Printf("%s:%s", t.Slug, change.Branch)
-	}
 
 	return err
 }
