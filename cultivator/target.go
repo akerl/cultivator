@@ -202,7 +202,7 @@ func (t *target) openPR(change Change) error {
 		*t.Data.Owner.Login,
 		*t.Data.Name,
 		int(*prs[0].ID),
-		&github.NewPullRequest{
+		&github.PullRequest{
 			Title: &change.Name,
 			Body:  &change.Body,
 		},
