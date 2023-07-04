@@ -117,3 +117,15 @@ func FindReplace(file string, pattern *regexp.Regexp, fn FindReplaceFunc) error 
 	newFile := strings.Join(lines, "\n")
 	return os.WriteFile(file, []byte(newFile), 0644)
 }
+
+// SimpleCommit returns a static set of values for the change
+func SimpleCommit(name, branch, body, commitmsg string) func(string) Change {
+	return func(_ string) Change {
+		return Change{
+			Name:      name,
+			Branch:    branch,
+			Body:      body,
+			CommitMsg: commitmsg,
+		}
+	}
+}
