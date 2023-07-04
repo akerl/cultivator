@@ -53,7 +53,7 @@ func (p *Plugin) Run() {
 	if err != nil {
 		panic(err.Error())
 	}
-	fmt.Print(output)
+	fmt.Print(string(output))
 }
 
 // FileExistsCondition helps check if a set of files exists
