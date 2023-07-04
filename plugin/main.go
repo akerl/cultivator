@@ -97,7 +97,7 @@ func AllCondition(conditions ...Condition) Condition {
 type FindReplaceFunc func([]string) string
 
 // FindReplace checks a file and runs an update function on matching lines
-func FindReplace(file string, pattern regexp.Regexp, fn FindReplaceFunc) error {
+func FindReplace(file string, pattern *regexp.Regexp, fn FindReplaceFunc) error {
 	fh, err := os.Open(file)
 	if err != nil {
 		return err
