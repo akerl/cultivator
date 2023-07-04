@@ -17,12 +17,15 @@ type Condition func(string) bool
 // Executor defines how to update the repo
 type Executor func(string) error
 
+// Change aliases the cultivator type for convenience
+type Change cultivator.Change
+
+// Commit defines the metadata of a git commit and PR
+type Commit func(string) Change
+
 // Plugin defines a standard cultivator check
 type Plugin struct {
-	Name      string
-	Branch    string
-	Body      string
-	CommitMsg string
+	Commit    Commit
 	Condition Condition
 	Executor  Executor
 }
@@ -42,12 +45,7 @@ func (p *Plugin) Run() {
 		}
 	}
 
-	c := cultivator.Change{
-		Name:      p.Name,
-		Branch:    p.Branch,
-		Body:      p.Body,
-		CommitMsg: p.CommitMsg,
-	}
+	c := p.Commit(tmpdir)
 
 	output, err := json.Marshal(c)
 	if err != nil {
