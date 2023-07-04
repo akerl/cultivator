@@ -173,17 +173,40 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
-	logger.DebugMsg(fmt.Sprintf("creating PR for %s on %s", change.Branch, t.Path))
-	_, _, err = t.Client.PullRequests.Create(
+	prs, _, err := t.Client.PullRequests.List(
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
+		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", t.Slug, change.Branch)},
+	)
+
+	if len(prs) == 0 {
+		logger.DebugMsg(fmt.Sprintf("creating PR for %s on %s", change.Branch, t.Path))
+		_, _, err = t.Client.PullRequests.Create(
+			context.Background(),
+			*t.Data.Owner.Login,
+			*t.Data.Name,
+			&github.NewPullRequest{
+				Title: &change.Name,
+				Body:  &change.Body,
+				Base:  t.Data.DefaultBranch,
+				Head:  &change.Branch,
+			},
+		)
+		return err
+	}
+
+	logger.DebugMsg(fmt.Sprintf("updating PR for %s on %s", change.Branch, t.Path))
+	_, _, err = t.Client.PullRequests.Edit(
+		context.Background(),
+		*t.Data.Owner.Login,
+		*t.Data.Name,
+		int(*prs[0].ID),
 		&github.NewPullRequest{
 			Title: &change.Name,
 			Body:  &change.Body,
-			Base:  t.Data.DefaultBranch,
-			Head:  &change.Branch,
 		},
 	)
+
 	return err
 }
