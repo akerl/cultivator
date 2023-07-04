@@ -1,9 +1,12 @@
 package plugin
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 
 	"github.com/akerl/cultivator/cultivator"
 )
@@ -88,4 +91,31 @@ func AllCondition(conditions ...Condition) Condition {
 		}
 		return true
 	}
+}
+
+// FindReplaceFunc defines an updater for FindReplace matches
+type FindReplaceFunc func([]string) string
+
+// FindReplace checks a file and runs an update function on matching lines
+func FindReplace(file string, pattern regexp.Regexp, fn FindReplaceFunc) error {
+	fh, err := os.Open(file)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(fh)
+	var lines []string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if pattern.MatchString(line) {
+			line = fn(pattern.FindStringSubmatch(line))
+		}
+		lines = append(lines, line)
+	}
+
+	fh.Close()
+
+	newFile := strings.Join(lines, "\n")
+	return os.WriteFile(file, []byte(newFile), 0644)
 }
