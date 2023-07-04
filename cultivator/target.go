@@ -179,6 +179,9 @@ func (t *target) openPR(change Change) error {
 		*t.Data.Name,
 		&github.PullRequestListOptions{Head: fmt.Sprintf("%s:%s", t.Slug, change.Branch)},
 	)
+	if err != nil {
+		return err
+	}
 
 	if len(prs) == 0 {
 		logger.DebugMsg(fmt.Sprintf("creating PR for %s on %s", change.Branch, t.Path))
@@ -207,6 +210,11 @@ func (t *target) openPR(change Change) error {
 			Body:  &change.Body,
 		},
 	)
+
+	if err != nil {
+		fmt.Printf("%+v\n", prs)
+		fmt.Printf("%s:%s", t.Slug, change.Branch)
+	}
 
 	return err
 }
