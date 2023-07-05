@@ -222,6 +222,8 @@ func (t *target) openPR(change Change) error {
 				Body:  &change.Body,
 			},
 		)
+	} else {
+		logger.DebugMsg("skipping already up-to-date PR for %s on %s", change.Branch, t.Path)
 	}
 
 	return err
