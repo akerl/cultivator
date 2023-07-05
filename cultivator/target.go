@@ -134,8 +134,13 @@ func (t *target) closePR(change Change) error {
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		&github.PullRequestListOptions{Head: change.Branch},
+		&github.PullRequestListOptions{
+			Head: fmt.Sprintf("%s:%s", *t.Data.Owner.Login, change.Branch),
+		},
 	)
+	if err != nil {
+		return err
+	}
 
 	if len(prs) == 0 {
 		logger.DebugMsg(fmt.Sprintf("no open PRs for %s on %s", change.Name, t.Path))
@@ -144,7 +149,12 @@ func (t *target) closePR(change Change) error {
 		return fmt.Errorf("got more than 1 PR for same branch, refusing to proceed")
 	}
 
-	logger.DebugMsg(fmt.Sprintf("closing PR for %s on %s", change.Name, t.Path))
+	logger.DebugMsg(fmt.Sprintf(
+		"closing PR %d for %s on %s",
+		int(*prs[0].Number),
+		change.Name,
+		t.Path,
+	))
 	state := "closed"
 	_, _, err = t.Client.PullRequests.Edit(
 		context.Background(),
@@ -171,7 +181,9 @@ func (t *target) openPR(change Change) error {
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		&github.PullRequestListOptions{Head: change.Branch},
+		&github.PullRequestListOptions{
+			Head: fmt.Sprintf("%s:%s", *t.Data.Owner.Login, change.Branch),
+		},
 	)
 	if err != nil {
 		return err
