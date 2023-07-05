@@ -150,7 +150,7 @@ func (t *target) closePR(change Change) error {
 		context.Background(),
 		*t.Data.Owner.Login,
 		*t.Data.Name,
-		int(*prs[0].ID),
+		int(*prs[0].Number),
 		&github.PullRequest{State: &state},
 	)
 	return err
@@ -167,12 +167,6 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
-	ref := *t.Data.DefaultBranch + ":" + change.Branch
-	_, _, err = t.runCommand("git", "push", "--force", "origin", ref)
-	if err != nil {
-		return err
-	}
-
 	prs, _, err := t.Client.PullRequests.List(
 		context.Background(),
 		*t.Data.Owner.Login,
@@ -184,6 +178,12 @@ func (t *target) openPR(change Change) error {
 	}
 
 	if len(prs) == 0 {
+		ref := *t.Data.DefaultBranch + ":" + change.Branch
+		_, _, err = t.runCommand("git", "push", "--force", "origin", ref)
+		if err != nil {
+			return err
+		}
+
 		logger.DebugMsg(fmt.Sprintf("creating PR for %s on %s", change.Branch, t.Path))
 		_, _, err = t.Client.PullRequests.Create(
 			context.Background(),
@@ -199,17 +199,30 @@ func (t *target) openPR(change Change) error {
 		return err
 	}
 
-	logger.DebugMsg(fmt.Sprintf("updating PR for %s on %s", change.Branch, t.Path))
-	_, _, err = t.Client.PullRequests.Edit(
-		context.Background(),
-		*t.Data.Owner.Login,
-		*t.Data.Name,
-		int(*prs[0].ID),
-		&github.PullRequest{
-			Title: &change.Name,
-			Body:  &change.Body,
-		},
-	)
+	out, _, err := t.runCommand("git", "diff", "HEAD", "origin/"+change.Branch)
+	if err != nil {
+		return err
+	}
+
+	if len(out) != 0 {
+		ref := *t.Data.DefaultBranch + ":" + change.Branch
+		_, _, err = t.runCommand("git", "push", "--force", "origin", ref)
+		if err != nil {
+			return err
+		}
+
+		logger.DebugMsg(fmt.Sprintf("updating PR for %s on %s", change.Branch, t.Path))
+		_, _, err = t.Client.PullRequests.Edit(
+			context.Background(),
+			*t.Data.Owner.Login,
+			*t.Data.Name,
+			int(*prs[0].Number),
+			&github.PullRequest{
+				Title: &change.Name,
+				Body:  &change.Body,
+			},
+		)
+	}
 
 	return err
 }
