@@ -36,8 +36,7 @@ func (p *Plugin) Run() {
 	}
 	tmpdir := os.Args[1]
 
-	ok := p.Condition(tmpdir)
-	if ok {
+	if p.Condition != nil && p.Condition(tmpdir) {
 		err := p.Executor(tmpdir)
 		if err != nil {
 			panic(err.Error())
