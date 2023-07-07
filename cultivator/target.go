@@ -53,12 +53,27 @@ func (t *target) cleanRepo() error {
 		return err
 	}
 
-	_, _, err = t.runCommand("git", "clean", "-f")
+	_, _, err = t.runCommand("git", "reset", "--hard", "origin/"+*t.Data.DefaultBranch)
 	if err != nil {
 		return err
 	}
 
-	_, _, err = t.runCommand("git", "reset", "--hard", "origin/"+*t.Data.DefaultBranch)
+	_, _, err = t.runCommand("git", "submodule", "sync", "--recursive")
+	if err != nil {
+		return err
+	}
+
+	_, _, err = t.runCommand("git", "submodule", "update", "--init", "--force", "--recursive")
+	if err != nil {
+		return err
+	}
+
+	_, _, err = t.runCommand("git", "clean", "-ffdx")
+	if err != nil {
+		return err
+	}
+
+	_, _, err = t.runCommand("git", "submodule", "foreach", "--recursive", "git", "clean", "-ffdx")
 	if err != nil {
 		return err
 	}
